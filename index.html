@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>🎨 Doll Generator</title>
+  <style>
+    :root { --card:#f8fafd; --fg:#111; --muted:#666; --accent:#9b59b6; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin:0; background:#fff; color:var(--fg);}
+    .container{max-width:980px;margin:0 auto;padding:20px;}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+    .card{background:var(--card);border-radius:16px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.06);}
+    label{display:block;font-weight:600;margin:8px 0 4px;}
+    input[type="text"], input[type="number"], select, input[type="color"]{
+      width:100%;padding:10px;border-radius:10px;border:1px solid #ddd;background:#fff;
+    }
+    input[type="file"]{width:100%;}
+    button{padding:12px 16px;border:0;border-radius:12px;background:var(--accent);color:#fff;font-weight:700;cursor:pointer}
+    button[disabled]{opacity:.5;cursor:not-allowed}
+    .muted{color:var(--muted);font-size:.9rem}
+    .progress{height:10px;background:#eee;border-radius:999px;overflow:hidden;margin-top:8px}
+    .bar{height:100%;width:0;background:#2ecc71;transition:width .2s}
+    .imgwrap{display:flex;justify-content:center;margin-top:12px}
+    img.preview{max-width:100%;border-radius:12px}
+    .sidebar{position:sticky;top:16px}
+    .split{display:grid;grid-template-columns:2fr 1fr;gap:20px}
+    .badge{display:inline-block;background:#eee;border-radius:999px;padding:4px 10px;margin-left:8px;font-size:.8rem}
+    .qr{display:block;width:100%;max-width:360px;border-radius:12px;border:1px solid #eee}
+    code{display:block;white-space:pre-wrap;background:#f5f5f5;border-radius:8px;padding:8px}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎨 Doll Generator <span class="badge">static web</span></h1>
+
+    <div class="split">
+      <!-- MAIN -->
+      <div>
+
+        <div class="card">
+          <div class="row">
+            <div>
+              <label>Title</label>
+              <input id="title" type="text" maxlength="15" placeholder="Explorer / Artist / Name" />
+
+              <label>Accessory 1</label>
+              <input id="acc1" type="text" placeholder="e.g., Paintbrush" />
+              <label>Accessory 2</label>
+              <input id="acc2" type="text" placeholder="e.g., Treasure Map" />
+
+              <div class="row">
+                <div>
+                  <label>Style</label>
+                  <select id="style">
+                    <option value="KAWAII">KAWAII</option>
+                  </select>
+                </div>
+                <div>
+                  <label>Font Type</label>
+                  <select id="fonttype">
+                    <option>cursive</option><option>sans-serif</option>
+                    <option>serif</option><option>comic</option><option>modern</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="row">
+                <div>
+                  <label>Font Size</label>
+                  <input id="fontsize" type="number" min="5" max="30" value="18"/>
+                </div>
+                <div>
+                  <label>Upload Selfie</label>
+                  <input id="selfie" type="file" accept="image/*"/>
+                </div>
+              </div>
+
+              <div class="row">
+                <div>
+                  <label>Title Color</label>
+                  <input id="title_color" type="color" value="#222222" />
+                </div>
+                <div>
+                  <label>Panels Color</label>
+                  <input id="panel_color" type="color" value="#88C0F7" />
+                </div>
+              </div>
+
+              <div>
+                <label>Background Color</label>
+                <input id="bg_color" type="color" value="#F7E9FF" />
+                <div id="color_warn" class="muted"></div>
+              </div>
+
+              <div style="margin-top:12px">
+                <button id="btnGen">Generate Image</button>
+                <span id="reqid" class="muted"></span>
+                <div class="progress"><div id="bar" class="bar"></div></div>
+                <div id="status" class="muted" style="margin-top:6px"></div>
+              </div>
+            </div>
+
+            <div>
+              <label>Style preview</label>
+              <img class="preview" src="assets/kawaii.jpg" alt="KAWAII preview" />
+              <p class="muted">Chibi, soft matte, pastel; big head, rounded shapes.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>🖼️ Result</h3>
+          <div id="time" class="muted"></div>
+          <div class="imgwrap"><img id="out" class="preview" /></div>
+          <div style="margin-top:12px">
+            <button id="btnPost" disabled>Run crop &amp; color (upload)</button>
+          </div>
+          <div id="postSummary" style="margin-top:8px"></div>
+        </div>
+      </div>
+
+      <!-- SIDEBAR -->
+      <div class="sidebar">
+        <div class="card">
+          <h3>💸 PayNow</h3>
+          <p class="muted" style="margin-top:-6px">Scan with your SG banking app</p>
+          <img class="qr" src="assets/paynow.png" alt="PayNow SGQR" />
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const API_BASE = "https://YOUR-BACKEND.example.com"; // <-- set your FastAPI URL
+
+const el = id => document.getElementById(id);
+const btnGen = el("btnGen");
+const btnPost = el("btnPost");
+const bar = el("bar");
+const statusEl = el("status");
+const out = el("out");
+const timeEl = el("time");
+const reqidEl = el("reqid");
+const warnEl = el("color_warn");
+
+let lastB64 = null;
+let requestId = null;
+let lastFilename = null;
+
+function sameColor(a,b){ return (a||"").toLowerCase() === (b||"").toLowerCase(); }
+
+el("panel_color").addEventListener("input", checkColors);
+el("bg_color").addEventListener("input", checkColors);
+function checkColors(){
+  const p = el("panel_color").value, b = el("bg_color").value;
+  warnEl.textContent = sameColor(p,b) ? "⚠️ Panels and background must be different." : "";
+  btnGen.disabled = sameColor(p,b);
+}
+checkColors();
+
+btnGen.onclick = async () => {
+  const title = el("title").value.trim();
+  const acc1  = el("acc1").value.trim();
+  const acc2  = el("acc2").value.trim();
+  const style = el("style").value;
+  const fonttype = el("fonttype").value;
+  const fontsize = parseInt(el("fontsize").value || "18", 10);
+  const title_color = el("title_color").value;
+  const panel_color = el("panel_color").value;
+  const background_color = el("bg_color").value;
+  const selfie = el("selfie").files[0];
+
+  if(!title){ alert("Enter a title"); return; }
+  if(!acc1 || !acc2){ alert("Enter both accessories"); return; }
+  if(!selfie){ alert("Upload a selfie"); return; }
+
+  btnGen.disabled = true; btnPost.disabled = true;
+  bar.style.width = "0%"; statusEl.textContent = "Submitting...";
+  const t0 = performance.now();
+
+  const fd = new FormData();
+  fd.append("selfie", selfie, "selfie.png");
+  fd.append("accessory1", acc1);
+  fd.append("accessory2", acc2);
+  fd.append("title", title);
+  fd.append("style", style);
+  fd.append("fonttype", fonttype);
+  fd.append("font_size", String(fontsize));
+  fd.append("panel_color", panel_color);
+  fd.append("background_color", background_color);
+  fd.append("title_color", title_color);
+
+  try {
+    const resp = await fetch(`${API_BASE}/pipeline`, { method:"POST", body: fd });
+    if(!resp.ok) throw new Error(await resp.text());
+    const { task_id, request_id } = await resp.json();
+    requestId = request_id || null;
+    reqidEl.textContent = requestId ? `Request ID: ${requestId}` : "";
+
+    // Poll status
+    let imageReceived = false;
+    while(true){
+      await new Promise(r => setTimeout(r, 500));
+      const s = await fetch(`${API_BASE}/status/${task_id}`);
+      const data = await s.json();
+      const pct = Math.max(0, Math.min(100, parseInt(data.progress || 0)));
+      bar.style.width = pct + "%";
+      statusEl.textContent = data.message || "Working...";
+
+      if(!imageReceived && data.image){
+        imageReceived = true;
+        lastB64 = data.image;
+        lastFilename = data.filename || null;
+        const dt = (performance.now() - t0)/1000;
+        timeEl.textContent = `Generated in ${dt.toFixed(2)}s`;
+        out.src = "data:image/png;base64," + lastB64;
+        btnPost.disabled = false;
+        statusEl.textContent = "Done.";
+        bar.style.width = "100%";
+        break;
+      }
+      if(data.status === "error"){
+        throw new Error(data.message || "Processing error");
+      }
+    }
+  } catch(err){
+    alert("Request failed: " + err.message);
+    statusEl.textContent = "Error.";
+  } finally {
+    btnGen.disabled = false;
+  }
+};
+
+btnPost.onclick = async () => {
+  if(!lastB64){ return; }
+  btnPost.disabled = true;
+  const payload = {
+    image_b64: lastB64,
+    fonttype: el("fonttype").value,
+    font_size: parseInt(el("fontsize").value || "18", 10),
+    panel_color: el("panel_color").value,
+    background_color: el("bg_color").value,
+    title_color: el("title_color").value,
+    filename: lastFilename,
+    request_id: requestId,
+    title: el("title").value.trim(),
+    accessory1: el("acc1").value.trim(),
+    accessory2: el("acc2").value.trim(),
+    style: el("style").value
+  };
+  const sum = el("postSummary");
+  sum.innerHTML = "Uploading…";
+  try{
+    const r = await fetch(`${API_BASE}/postprocess`, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify(payload)
+    });
+    if(!r.ok) throw new Error(await r.text());
+    const data = await r.json();
+    sum.innerHTML = `
+      <div class="card" style="margin-top:8px">
+        <div><strong>Output filename:</strong> ${data.filename || "-"}</div>
+        ${requestId ? `<div><strong>Request ID:</strong> ${requestId}</div>` : ""}
+        <div><strong>Cropped folder:</strong> ${data.cropped_folder || "-"}</div>
+        <div><strong>Colors:</strong><code>${JSON.stringify(data.colors || {}, null, 2)}</code></div>
+      </div>
+    `;
+  }catch(err){
+    alert("Postprocess failed: " + err.message);
+    sum.textContent = "Error.";
+  }finally{
+    btnPost.disabled = false;
+  }
+};
+</script>
+</body>
+</html>
